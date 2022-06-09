@@ -1,0 +1,77 @@
+version: "3"
+
+services:
+  geth:
+    container_name: 'geth'
+    image: ethereum/client-go:v1.10.18
+    restart: unless-stopped
+    ports:
+      - "30303:30303"
+      - "30303:30303/udp"
+      - "8545:8545"
+      - "8546:8546"
+    volumes:
+      - ./chaindata:/chaindata
+      - ./geth/:/geth
+    stop_signal: SIGINT
+    stop_grace_period: 2m
+    command:
+      - --http
+      - --http.api
+      - "db,eth,net,web3,txpool,miner,personal,debug"
+      - --http.addr=0.0.0.0
+      - --http.vhosts=*
+      - --http.corsdomain=*
+      - --ws
+      - --ws.origins=*
+      - --ws.addr=0.0.0.0
+      - --ws.api
+      - "db,eth,net,web3,txpool,miner,personal,debug"
+      - --graphql
+      - --graphql.corsdomain=*
+      - --graphql.vhosts=*
+      - --datadir
+      - "/chaindata"
+      - --dev
+      - --password
+      - "/geth/password.txt"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "2m"
+        max-file: "10"
+
+  blockscout-db:
+    image: postgres:13.6
+    restart: always
+    container_name: 'postgres'
+    environment:
+      POSTGRES_PASSWORD: ''
+      POSTGRES_USER: 'postgres'
+      POSTGRES_HOST_AUTH_METHOD: 'trust'
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    ports:
+      - "7432:5432"
+
+  blockscout:
+    depends_on:
+      - blockscout-db
+    image: blockscout/blockscout:latest
+    restart: always
+    container_name: 'blockscout'
+    links:
+      - blockscout-db
+    command: 'mix do ecto.create, ecto.migrate, phx.server'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    env_file:
+      -  ./blockscout.env
+    environment:
+      ETHEREUM_JSONRPC_VARIANT: 'geth'
+      BLOCK_TRANSFORMER: 'clique'
+      ETHEREUM_JSONRPC_HTTP_URL: http://host.docker.internal:8545/
+      DATABASE_URL: postgresql://postgres:@host.docker.internal:7432/blockscout?ssl=false
+      ECTO_USE_SSL: "false"
+    ports:
+      - "4000:4000"

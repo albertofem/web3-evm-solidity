@@ -1,1 +1,4 @@
 node_modules/
+chaindata
+build
+postgres-data
